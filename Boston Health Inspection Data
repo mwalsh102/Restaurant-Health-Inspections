@@ -1,0 +1,237 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "id": "e8657819-83b9-4f7a-81f4-207757a17acc",
+   "metadata": {},
+   "source": [
+    "# Analyzing and Mapping Boston Health Inspection Data"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "5b4b90da-9506-4831-83a0-df5db0b27d8c",
+   "metadata": {},
+   "source": [
+    "## Prepare Restaurant Data"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "d877af97-66b4-4c1c-8421-043aa3dd5b94",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import pandas as pd\n",
+    "\n",
+    "bos=pd.read_csv('bos_restaurants_n.csv')\n",
+    "\n",
+    "bos['date']=bos['resultdttm'].str[:-5]\n",
+    "bos['date']=bos['date'].str.replace(\" \", \"\")\n",
+    "bos['date']=pd.to_datetime(bos['violdttm'], errors='coerce')\n",
+    "bos['year']=bos['date'].dt.year\n",
+    "bos['year']=bos['year'].astype(str)\n",
+    "bos['licenseno']=bos['licenseno'].astype(str)\n",
+    "\n",
+    "bos=bos.sort_values(by='date')\n",
+    "\n",
+    "bos['UniqueID']=bos['businessname']+\" \" + bos['year'] + \" \" + bos['violdttm']\n",
+    "\n",
+    "bos['UniqueID_Address']=bos['businessname'] + \" \" + bos['address']\n",
+    "\n",
+    "bos1=bos.dropna(subset='violstatus')\n",
+    "\n",
+    "bos1=bos1[bos1['violstatus']!=\" \"]\n",
+    "bos1=bos1[bos1['viollevel']!=\"-\"]\n",
+    "bos1=bos1[bos1['viollevel']!=\" \"]\n",
+    "\n",
+    "bos1['points']=bos1['viollevel'] + bos['violstatus']\n",
+    "bos1['points']=bos1['points'].str.replace(\"***Fail\", \"-10\")\n",
+    "bos1['points']=bos1['points'].str.replace(\"**Fail\", \"-7\")\n",
+    "bos1['points']=bos1['points'].str.replace(\"*Fail\", \"-2\")\n",
+    "bos1['points']=bos1['points'].str.replace(\"***Pass\", \"0\")\n",
+    "bos1['points']=bos1['points'].str.replace(\"**Pass\", \"0\")\n",
+    "bos1['points']=bos1['points'].str.replace(\"*Pass\", \"0\")\n",
+    "bos1['points']=bos1['points'].str.replace(\"***NotReq\", \"0\")\n",
+    "bos1['points']=bos1['points'].str.replace(\"**NotReq\", \"0\")\n",
+    "bos1['points']=bos1['points'].str.replace(\"*NotReq\", \"0\")\n",
+    "\n",
+    "bos1['points']=bos1['points'].astype(int)\n",
+    "\n",
+    "bos1['year']=bos1['date'].dt.year\n",
+    "bos1=bos1[bos1['licstatus']!='Inactive']\n",
+    "bos1=bos1[bos1['descript'].str.contains('Eating')]\n",
+    "\n",
+    "# bos2=bos1[bos1['year']>=2019]\n",
+    "\n",
+    "bos_piv=bos1.pivot_table(index='UniqueID',\n",
+    "                          values='points',\n",
+    "                          aggfunc='sum')\n",
+    "\n",
+    "## bos_piv.to_excel('bospiv.xlsx')\n",
+    "\n",
+    "bos_piv['score'] = 100+bos_piv['points']\n",
+    "\n",
+    "address_table = bos[['businessname', 'address', 'UniqueID_Address', 'UniqueID', 'licenseno', 'date', 'city', 'state', 'zip']]\n",
+    "address_table=address_table.sort_values(by='date', ascending=False)\n",
+    "\n",
+    "address_table_nodup = address_table.drop_duplicates(subset='address')\n",
+    "\n",
+    "address_table_nodup_list = address_table_nodup.values.tolist()\n",
+    "\n",
+    "address_table=address_table.rename(columns={'UniqueID': 'Unique_ID'})\n",
+    "\n",
+    "address_table=address_table.drop_duplicates(subset='Unique_ID')\n",
+    "\n",
+    "address_table_nodup=address_table.drop_duplicates(subset='licenseno')\n",
+    "\n",
+    "bos_piv['Unique_ID']=bos_piv.index\n",
+    "\n",
+    "merged_scores = bos_piv.merge(address_table, on='Unique_ID')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "9808939f-5719-423e-99e0-cdfdf58de47e",
+   "metadata": {},
+   "source": [
+    "## Sort by latest inspection, remove duplicates, and reformat addresses"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "56376eca-34bb-4ee6-ad4d-ba30397a5569",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "merged_scores_latest=merged_scores.sort_values(by='date', ascending=False)\n",
+    "\n",
+    "merged_scores_latest['zip']=merged_scores_latest['zip'].astype(str)\n",
+    "merged_scores_latest['full_address']=merged_scores_latest['address']+ \", \" + merged_scores_latest['city'] + \" \" + \"MA\" +\" \" + \"0\" + merged_scores_latest['zip']\n",
+    "merged_scores_latest['full_address']=merged_scores_latest['full_address'].str.replace(\"/\", \"\")\n",
+    "merged_scores_latest['full_address']=merged_scores_latest['full_address'].str.replace(\"  \", \" \")\n",
+    "\n",
+    "merged_scores_latest_nodup=merged_scores_latest.drop_duplicates(subset='licenseno')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "3969b04d-bdce-4d23-aa60-5fac555e7f1e",
+   "metadata": {},
+   "source": [
+    "## Geocode Addresses"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "ff8e78c7-a296-46bb-abd9-b516b0d821a3",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "\n",
+    "API_KEY='AIzaSyCz2Bgux8zbr4elpXYZAmNq3fHOY-CSVHw'\n",
+    "\n",
+    "import requests\n",
+    "\n",
+    "for g in merged_scores_latest_nodup_list:\n",
+    "    address_or_zipcode=g[11]\n",
+    "    api_key = API_KEY\n",
+    "    base_url = \"https://maps.googleapis.com/maps/api/geocode/json\"\n",
+    "    endpoint = f\"{base_url}?address={address_or_zipcode}&key={api_key}\"\n",
+    "    # see how our endpoint includes our API key? Yes this is yet another reason to restrict the key\n",
+    "    r = requests.get(endpoint)\n",
+    "    if len(r.json()['results'])==1:\n",
+    "        results = r.json()['results'][0]\n",
+    "        lat = results['geometry']['location']['lat']\n",
+    "        lng = results['geometry']['location']['lng']\n",
+    "        g.append(lat)\n",
+    "        g.append(lng)\n",
+    "    else:\n",
+    "        None"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "97c866f0-c68e-4c42-bd4d-bf3cda9a44ee",
+   "metadata": {},
+   "source": [
+    "## Format geodataframe and calculate scores and health grades"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "86577937-f119-44ad-b36b-057628783921",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "merged_df=pd.DataFrame(merged_scores_latest_nodup_list)\n",
+    "\n",
+    "merged_df=merged_df.rename(columns={0: 'violations', 1: 'score', 2: 'unique id', 3: 'business name', 4: 'addresss',\n",
+    "                                      5: 'unique addresss', 6: 'licenseno', 7: 'date', 8: 'city', 9: 'state',\n",
+    "                                      10: 'zip', 11: 'full_addresss', 14: 'testlat', 15: 'testlon'})\n",
+    "\n",
+    "##merged_df.to_excel(\"merged_and_geocoded bos restaurants real.xlsx\")\n",
+    "\n",
+    "import geopandas as gpd\n",
+    "\n",
+    "merged_gdf = gpd.GeoDataFrame(\n",
+    "    merged_to_Add,\n",
+    "    geometry=gpd.points_from_xy(merged_gdf.lon, merged_gdf.lat))\n",
+    "\n",
+    "\n",
+    "merged_gdf=merged_gdf.rename(columns={0: 'violations', 1: 'score', 2: 'unique id', 3: 'business name', 4: 'addresss',\n",
+    "                                      5: 'unique addresss', 6: 'licenseno', 7: 'date', 8: 'city', 9: 'state',\n",
+    "                                      10: 'zip', 11: 'full_addresss', 14: 'testlat', 15: 'testlon'})\n",
+    "\n",
+    "merged_gdf['score']=100+merged_gdf['violations']\n",
+    "\n",
+    "def map_score_to_letter(score):\n",
+    "    if score >= 94:\n",
+    "        return 'A'\n",
+    "    elif 81 <= score <= 93:\n",
+    "        return 'B'\n",
+    "    else:\n",
+    "        return 'C'\n",
+    "\n",
+    "merged_gdf['grade'] = merged_gdf['score_x'].apply(map_score_to_letter)\n",
+    "\n",
+    "merged_gdf['date_x']=merged_gdf['date_x'].astype(str)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "e4c96963-c88e-48b3-926d-a2aa7318ff92",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "merged_gdf.to_file(\"Boston Restaurants Shapefile2.shp\", driver=\"ESRI Shapefile\")\n"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3 (ipykernel)",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.10.5"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
